@@ -1,0 +1,582 @@
+
+
+libname aw "/folders/myfolders/base pro";
+
+/* import all datasets into SAS */
+
+data Offices;
+	infile "/folders/myfolders/base pro/Offices.txt" dlm="," dsd truncover;
+	input officecode :$10. city : $50. phone : $50. addressLine1 : $50. addressLine2 : $50. 
+		state : $50. country : $50. postalCode : $15. territory : $10.;
+run;
+
+data Employees;
+	infile "/folders/myfolders/base pro/Employees.txt" dlm="," dsd truncover;
+	input employeeNumber lastName:$50. firstName :$50. extension :$10. email :$100. officecode :$10.
+	reportsTo jobTitle :$50.;
+run; 
+
+data Customers;
+	infile "/folders/myfolders/base pro/Customers.txt" dlm="," dsd truncover;
+	input customerNumber customerName : $50. contactLastName :$50. contactFirstName :$50. phone :$50.
+	addressLine1 :$50. addressLine2 :$50. city :$50. state :$50. postalCode :$15. country :$50. 
+	salesRepEmployeeNumber creditLimit;
+run;
+
+data Orders;
+	infile "/folders/myfolders/base pro/Orders.txt" dlm="," dsd truncover;
+	input orderNumber orderDate :yymmdd10. requiredDate :yymmdd10. shippedDate :yymmdd10. status :$15. 
+	comments :$100.  customerNumber;
+	format orderDate requiredDate shippedDate yymmdd10.;
+run;
+
+data OrderDetails;
+	infile "/folders/myfolders/base pro/OrderDetails.txt" dlm="," dsd truncover;
+	input orderNumber productCode :$15. quantityOrdered priceEach orderLineNumber;
+run;
+
+data Products;
+	infile "/folders/myfolders/base pro/Products.txt" dlm="," dsd truncover;
+	input productCode :$15. productName :$70. productLine :$50. productScale :$10. productVendor :$50.
+	productDescription :$500. quantityInStock buyPrice MSRP;
+run;
+
+data ProductLines;
+	infile "/folders/myfolders/base pro/ProductLines.txt" dlm="," dsd truncover;
+	input productLine :$50. textDescription :$500. htmlDescription :$200. image;
+run;
+
+data Payments;
+	infile "/folders/myfolders/base pro/Payments.txt" dlm="," dsd truncover;
+	input customerNumber checkNumber :$50. paymentDate :yymmdd10. amount;
+	format paymentDate :yymmdd10.;
+run;
+
+
+ /* table information*/
+/* Orderinf: the joining table of Orders and OrderDetails */
+/* off_emp_cust:merge table Offices, Empolyees and Customers */
+/* off_emp_cust_orderinf: merge off_emp_cust and Orderinf*/
+/* Sales: calculate the sales from table orderInf */
+/* qtrSal: quarterly sales inf from orderInf */
+/* monSal: monthly sales inf from orderInf */
+/* orderProd: merge orderInf and Products */
+
+
+/* 1.	Find out the Year over year (2003 versus 2004) sales growth? */
+
+/* Orderinf: the joining table of Orders and OrderDetails */
+proc sort data=Orders;
+by orderNumber;
+run;
+
+proc sort data=OrderDetails;
+by orderNumber;
+
+data orderInf;
+merge orders orderDetails;
+by orderNumber;
+/* ........................... */
+
+data Sales0304;
+set orderInf;
+sales=quantityOrdered*priceEach; 
+orderyear=year(orderdate); 
+if orderyear in (2003 2004) and status="Shipped";
+run;
+
+proc sort data=Sales0304;
+by orderyear;
+
+data totsal0304;
+set Sales0304;
+by orderyear;
+if first.orderyear then totalsales=0;
+totalsales+sales;
+if last.orderyear then output;
+keep orderyear totalsales;
+run;
+
+data sale_growth;
+set totsal0304;
+sale_growth=(totalsales-lag(totalsales))/totalsales;
+format sale_growth percent7.1;
+run;
+
+ods rtf file="/folders/myfolders/base pro/q1.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Year Over Year (2003 versus 2004) Sales Growth";
+proc print data=sale_growth noobs label
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label orderyear="Order Year"
+      totalsales="Total Sales"
+      sale_growth="Sale Growth";
+
+run;
+ods rtf close;
+
+/* 2.	Which quarter has highest Sales peak and in which month? */
+
+/* Orderinf: the joining table of Orders and OrderDetails *
+/* Sales: calculate the sales from table orderInf */
+data Sales;
+set orderInf;
+retain orderYear orderQtr orderMonth sales;
+sales=quantityOrdered*priceEach; 
+orderYear=year(orderDate);
+orderQtr=qtr(orderDate);
+orderMonth=month(orderDate);
+keep orderYear orderQtr orderMonth sales;
+run;
+/* ...................... */
+
+proc sort data=Sales;
+by orderYear orderQtr orderMonth;
+
+
+/* Which quarter has highest Sales peak */
+
+data qtrSal;
+set Sales;
+by orderYear orderQtr;
+if first.orderQtr then qtr_sal=sales;
+qtr_sal+sales;
+if last.orderQtr then output;
+Keep orderYear orderQtr qtr_sal;
+run;
+
+proc sort data=qtrSal out=sort_qtrSal;
+by descending qtr_sal;
+
+data highestQtrSal;
+set sort_qtrsal(firstobs=1 obs=1);
+run;
+
+ods rtf file="/folders/myfolders/base pro/q2_1.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Highest Sales Peak Quarter";
+proc print data=highestQtrSal label noobs
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label orderYear="Year of the Order"
+      orderQtr="Quarter of the Order"
+      qtr_sal="Total Sales of the Quarter";
+run;
+ods rtf close;
+
+/* Which month has highest Sales peak */
+
+data monSal;
+set Sales;
+by orderYear orderMonth;
+if first.orderMonth then mon_sal=sales;
+mon_sal+sales;
+if last.orderMonth then output;
+Keep orderYear orderMonth mon_sal;
+run;
+
+proc sort data=monSal out=sort_monSal;
+by descending mon_sal;
+
+data highestMonSal;
+set sort_monSal(firstobs=1 obs=1);
+run;
+
+
+ods rtf file="/folders/myfolders/base pro/q2_2.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Highest Sales Peak Month";
+proc print data=highestMonSal label noobs
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label orderYear="Year of the Order"
+      orderMonth="Month of the Order"
+      mon_sal="Total Sales of the Month";
+run;
+ods rtf close;
+
+/* 3.	Which territory generates the largest sales volume? */
+
+/* off_emp_cust:merge table Offices, Empolyees and Customers */
+/* Orderinf: the joining table of Orders and OrderDetails */
+/* off_emp_cust_orderinf: merge off_emp_cust and Orderinf*/
+
+proc sort data=offices;
+by officeCode;
+
+proc sort data=Employees;
+by officeCode;
+
+data off_emp;
+merge offices Employees;
+by officeCode;
+run;
+
+proc sort data=off_emp;
+by employeeNumber;
+
+proc sort data=Customers out=Customers1 (rename=(salesRepEmployeeNumber=employeeNumber
+                                                 phone=custPhone 
+                                                 addressLine1=custAddressLine1
+                                                 addressLine2=custAddressLine2
+                                                 city=custCity
+                                                 state=custState
+                                                 postalCode=custPostalCode
+                                                 country=custCountry));
+by salesRepEmployeeNumber;
+
+
+data off_emp_cust;
+merge off_emp Customers1;
+by employeeNumber;
+
+proc sort data=off_emp_cust;
+by customerNumber;
+
+proc sort data=orderInf;
+by customerNumber;
+
+data off_emp_cust_orderinf;
+merge off_emp_cust orderInf;
+by customerNumber;
+run;
+/* ........................... */
+
+/* subset off_emp_cust_Orderinf  */
+proc sort data=off_emp_cust_orderinf (keep=territory quantityOrdered) out=Sal_vol_territory;
+by territory;
+ 
+data totQuanSal;
+set Sal_vol_territory;
+by territory;
+if first.territory then totQuan=0;
+totquan+quantityOrdered;
+if last.territory then output;
+keep territory totQuan;
+run;
+ 
+proc sort data=totQuanSal;
+by descending totQuan;
+
+data highestSal;
+set totQuanSal (firstobs=1 obs=1);
+run;
+
+ods rtf file="/folders/myfolders/base pro/q3.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Territory of the Largest Sales Volume"; 
+proc print data=highestSal noobs label
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label territory="Territory"
+      totQuan="Largest Sales Volume";
+run;
+ods rtf close;
+ 
+/* 4.	Which quarter has a slight drop in sales for the year 2004? */
+
+data qtrSal_2004;
+set qtrSal;
+by orderQtr;
+where orderyear=2004;
+run;
+
+ods rtf file="/folders/myfolders/base pro/q4.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Total Quarter Sales in 2004";
+proc print data=qtrSal_2004 noobs label
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label orderYear="the Year of the Order"
+      orderQtr="the Quarter of the Order"
+      qtr_sal="Total Sales of the Quarter";
+run;
+ods rtf close;
+
+/* from the output, we can see the second quarter has a slight drop in sales for the year 2004 */
+
+
+/* 5.	Which productline accounts for highest % of sales volume? */
+
+/* orderProd: merge orderInf and Products */
+proc sort data=orderInf;
+by productCode;
+
+proc sort data=Products;
+by productCode;
+
+data orderProd;
+merge orderInf Products;
+by productCode;
+keep productLine quantityOrdered;
+run;
+/* ..................... */
+
+proc format;
+    picture pctfmt low-high='009.9%';
+run;
+
+ods rtf file="/folders/myfolders/base pro/q5.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Total Sales and Percentages of Product Line";
+proc tabulate data=orderProd;
+class productLine;
+var quantityOrdered;
+table (productLine all),quantityOrdered*(sum pctn*f=pctfmt7.1);
+keylabel  sum="Total"
+          pctn="Percent";
+label productLine="Product Line"
+      quantityOrdered="Sales Volume";
+run;
+ods rtf close;
+
+/* 6.	Find out the average of orders by the customer per year? Who (customer) gave highest no of orders per year? */
+
+data orderCust;
+set Orders;
+orderYear=year(orderDate);
+keep orderYear orderNumber;
+run;
+
+proc sort data=orderCust;
+by orderYear;
+
+data orderCust1;
+set orderCust;
+by orderYear;
+if first.orderYear then noOrder=0;
+noOrder+1;
+if last.orderYear then output;
+keep orderYear noOrder;
+run;
+
+
+ods rtf file="/folders/myfolders/base pro/q6_1.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Average of Orders per Year";
+proc means data=orderCust1 mean maxdec=1;
+var noOrder;
+run;
+ods rtf close;
+
+
+/* ...................... */
+/* Who (customer) gave highest no of orders per year? */
+
+data orderCust;
+set Orders;
+orderYear=year(orderDate);
+run;
+
+proc sort data=orderCust;
+by customerNumber orderYear;
+
+data orderCust1;
+set orderCust;
+by customerNumber orderYear;
+if first.orderYear then noOrder=0;
+noOrder+1;
+if last.orderYear then output;
+keep customerNumber orderYear noOrder;
+run;
+
+proc means data=orderCust1 noprint;
+class customerNumber;
+var noOrder;
+output out=meanOrderCust
+       mean=meanOrder;
+run;
+
+proc print data=meanOrderCust label
+label aveOrder="Average"
+
+proc sort data=meanOrderCust;
+by descending meanOrder;
+
+data maxOrderCust;
+set meanOrderCust(firstobs=1 obs=1);
+run;
+
+/* customerNumber who gave the highest number of orders per year is 141 */
+
+data findCust;
+set Customers;
+where customerNumber=141;
+run;
+
+ods rtf file="/folders/myfolders/base pro/q6_2.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Customer Information of the Highest Number of Orders per Year";
+proc print data=findCust
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+run;
+ods rtf close;
+
+/* 7.	Find out The shipping times (the difference between OrderDate and ShippedDate) for different locations.  */
+/* off_emp_cust :merge table Offices, Empolyees and Customers */
+/* off_emp_cust_ord:merge table Offices, Empolyees, Customers and Orders*/
+
+proc sort data=off_emp_cust;
+by customerNumber;
+
+proc sort data=Orders;
+by customerNumber;
+
+data off_emp_cust_ord;
+merge off_emp_cust Orders;
+by customerNumber;
+if status="Shipped";
+shipTime=shippedDate-orderDate;
+keep officeCode city postalCode shipTime;
+run;
+
+proc sort data=off_emp_cust_ord;
+by officeCode city postalCode;
+
+ods rtf file="/folders/myfolders/base pro/q7.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Shipping Time by Location";
+proc means data=off_emp_cust_ord mean maxdec=1;
+class officeCode city postalCode;
+var shipTime;
+ods rtf close;
+
+
+/* 8.	On average which customers send their payments faster?  */
+
+/* merge Customers, Payments and Orders */
+
+proc sort data=Payments;
+by customerNumber;
+
+proc sort data=Customers;
+by customerNumber;
+
+proc sort data=Orders;
+by customerNumber;
+
+data off_emp_cust;
+merge Customers Orders Payments;
+by customerNumber;
+keep customerNumber customerName orderDate paymentDate;
+run;
+
+
+
+
+
+
+
+
+/* 9.	Find out the brand new customers in EMEA that will start placing orders soon. */
+
+/* what's meaning for new customers who will start placing orders soon */
+
+proc sort data=off_emp_cust;
+by customerNumber;
+
+proc sort data=Orders;
+by customerNumber;
+
+data newCust;
+merge off_emp_cust Orders;
+by customerNumber;
+if customerName ne missing;
+if territory="EMEA" & orderNumber=.;
+keep employeeNumber customerNumber customerName custPhone custAddressLine1 custAddressLine2 custCity custState custPostalCode custCountry orderNumber;
+run;
+                                                 
+                                                 
+ods rtf file="/folders/myfolders/base pro/q9.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Brand New Customer in EMEA";
+proc print data=newCust noobs label;
+run;
+ods rtf close;
+
+/* 10.	Find out the average of MSRP? And range? */ 
+
+ods rtf file="/folders/myfolders/base pro/q10.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Average and Range of MSRP";
+proc means data=Products mean min max maxdec=2;
+var MSRP;
+run;
+ods rtf close;
+
+/* result:average of MSRP is 100.44, range in (33.19,214.30) */
+
+/* 11.	Each order contains how many 9 unique products? */
+
+proc sort data=OrderDetails;
+by orderNumber;
+run;
+
+data noProdPerOrd;
+set orderdetails;
+by orderNumber;
+if first.orderNumber then noProd=0;
+noProd+1;
+if last.orderNumber then output;
+keep orderNumber noProd;
+run;
+
+ods rtf file="/folders/myfolders/base pro/q11.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Number of Unique Product per Order";
+proc print data=noProdPerOrd noobs label
+style(data)={foreground=black background=yellow font_size=2 font_weight=bold}
+style(header)={foreground=blue background=yellow font_size=3 font_style=italic};
+label orderNumber="Order Number"
+      noProd="Number of Unique Product";
+run;
+ods rtf close;
+
+/* 12.	Which year contains incomplete data? */
+
+data dataCheck;
+set Orders;
+orderYear=year(orderDate);
+orderMonth=month(orderDate);
+keep orderYear orderMonth;
+run;
+
+proc sort data=dataCheck nodup;
+by orderYear orderMonth;
+run;
+
+/* result: year 2005 only has data till May, contains incomplete data */
+
+ods rtf file="/folders/myfolders/base pro/q12.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Number of Month Data Contained";
+proc means data=datacheck n nobs;
+var orderMonth;
+class orderYear;
+run;
+ods rtf close;
+
+/* result: year 2005 only has 5 month order, contains incomplete data */
+
+
+/* 13.	Find out the % of status as shipped?  */
+
+proc format;
+picture pctnfmt low-high="009.9%";
+run;
+
+ods rtf file="/folders/myfolders/base pro/q13.rtf";
+options nodate nonumber;
+title color=darkblue bcolor=lightGreen "Percentages of Order Status";
+proc tabulate data=Orders;
+class status;
+table (status all)*pctn*f=pctnfmt7.1;
+keylabel pctn="Percent";
+label status="Order Status";
+run;
+ods rtf close;
+
+/* result:92.9% of status were shipped */
+

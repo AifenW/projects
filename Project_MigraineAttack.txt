@@ -1,0 +1,882 @@
+/* Migraine Attack Data Analyses */
+
+libname project2 "/folders/myfolders/project2";
+
+/* DEMOGRAPHICS OF PATIENTS */
+
+/* Table 1 */
+
+/* data accessing */
+proc import out=project2.ptdetails
+            datafile="/folders/myfolders/project2/ptdetails.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+ 
+/* data validation */
+data _null_;
+set project2.ptdetails;
+if age=. then 
+put "AGE is Missing for Patient: " ptid;
+run;
+
+/* data cleaning */
+data valid invalid;
+set project2.ptdetails;
+if age=. then output invalid;
+else output valid;
+run;
+
+/* preparing the analysis dataset */
+data table1;
+set project2.ptdetails;
+keep ptid age sex;
+run;
+
+/* generating the table 1 */
+
+ods rtf file="/folders/myfolders/project2/table1.rtf";
+options nodate nonumber;
+title "Table 1. Average Age of Patients by Gender";
+proc tabulate data=table1;
+class sex;
+var age;
+table sex="",age=""*(n mean="Mean Age")/box="Gender";
+run;
+ods rtf close;
+
+/* Table 2 */
+
+/* data accessing */
+proc import out=project2.history
+            datafile="/folders/myfolders/project2/history.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+            
+/* data validation */
+data _null_;
+set project2.history;
+a=cmiss(smoking);
+b=cmiss(alcohol);
+put "smoking " "alcohol";
+put a "       " b;
+run;
+
+/* data cleaning and preparing the analysis dataset*/
+proc format;
+   value $yn "Y"="Yes"
+             "N"="No";
+run;
+
+data table2;
+set project2.history;
+where smoking is not null | alcohol is not null;
+format smoking $yn. alcohol $yn.;
+keep ptid smoking alcohol;
+run;
+        
+/* generating the table 2 */
+
+ods rtf file="/folders/myfolders/project2/table2.rtf";
+options nodate nonumber;
+title "Table 2. Analysis of Smoking and Alcohol";
+proc tabulate data=table2;
+class smoking alcohol;
+table smoking*n="" alcohol*n="";
+run;
+ods rtf close;
+
+/* table 3 */
+
+/* preparing the analysis dataset */
+data table3;
+set project2.history;
+where smoking is not null | alcohol is not null;
+keep ptid smoking smkyncig smkyyears alcohol alcyndpw;
+run;
+ 
+/* generating the table 3 */
+
+proc means data=table3 noprint;
+var smkyncig smkyyears alcyndpw;
+output out=table3a (drop=_:) 
+       n=
+       mean=
+       stddev=   /autoname;
+run;
+
+proc transpose data=table3a out=table3b1 (drop=_name_ rename=(col1=N));
+var smkyncig_n smkyyears_n alcyndpw_n;
+run; 
+
+proc transpose data=table3a out=table3b2 (drop=_name_ rename=(col1=Mean));
+var smkyncig_mean smkyyears_mean alcyndpw_mean;
+run; 
+
+proc transpose data=table3a out=table3b3 (drop=_name_);
+var smkyncig_stddev smkyyears_stddev alcyndpw_stddev;
+run;  
+
+proc sql;
+create table table3c as
+select b1._label_, N, Mean format=5.1 , col1 label="Std Dev" format=5.1 from table3b1 b1,table3b2 b2,table3b3 b3
+where b1._label_=b2._label_ and b2._label_=b3._label_;
+quit;
+
+proc format;
+  value $lbl "Smkyncig"="No. of Cigars Smoked"
+             "Smkyyears"="No. of Years Smoked"
+             "Alcyndpw"="No. of Drinks Per Week";
+run;
+
+ods rtf file="/folders/myfolders/project2/table3.rtf";
+options nodate nonumber;
+title "Table 3. Analysis of Smoking History and Alcohol Consumption";
+proc print data=table3c noobs label;
+format _label_ $lbl.;
+label _label_=Label;
+run;
+ods rtf close;
+
+
+/* VISIT 1 */
+
+/* ANALYSIS OF CLINICAL EXAMINATION */
+
+/* table 4 */
+
+/* data accessing */
+proc import out=project2.clinicalexamv1v2
+            datafile="/folders/myfolders/project2/ClinicalExamv1v2.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+              
+/* data cleaning and preparing the analysis dataset */
+data table4;
+set project2.clinicalexamv1v2;
+where visit=1;
+keep ptid visit pulse bpsystolic bpdiastolic;
+run;
+
+/* generating the table 4 */
+proc means data=table4 noprint;
+var pulse bpsystolic bpdiastolic;
+output out=table4a (drop=_:)
+       n=
+       mean=
+       stddev= /autoname;
+run;
+
+proc transpose data=table4a out=table4b;
+run;
+
+proc format;
+   value $label "Pulse"="Pluse"
+                "Bpsystolic"="Systolic Blood Pressure"
+                "Bpdiastolic"="Diastolic Blood Pressure";
+run;
+
+data table4c;
+set table4b (rename=(_label_=Label));
+stat=scan(_name_,2,"_");
+format label $label.;
+drop _name_;
+run;
+
+proc sort data=table4c;
+by descending label;
+run;
+
+proc transpose data=table4c out=table4d (drop=_name_);
+by descending label;
+id stat;
+var col1;
+run;
+
+ods rtf file="/folders/myfolders/project2/table4.rtf";
+options nodate nonumber;
+title "Table 4. Means of Blood Pressure and Pulse Rate";
+proc print data=table4d noobs label;
+format stddev 6.2;
+label stddev="Std Dev" label="Label";
+run;
+ods rtf close;
+
+/* table 5 */
+
+data table5;
+set project2.clinicalexamv1v2;
+where visit=1;
+keep ptid visit cardio respiratory abdomen cns;
+run;
+
+ods rtf file="/folders/myfolders/project2/table5.rtf";
+options nodate nonumber;
+title "Table 5. Summary of Other diseases";
+proc tabulate data=table5;
+class cardio respiratory abdomen cns;
+table (cardio respiratory abdomen cns),(all=" ")*(n pctn="Percent");
+run;
+ods rtf close;
+
+/* LAB TESTING */
+
+/* table 6 */
+
+/* data accessing */
+proc import out=project2.labtesting
+   datafile="/folders/myfolders/project2/labtesting.xlsx"
+   dbms=xlsx
+   replace;
+   run;
+
+/* data validation */
+data ptidmiss ptidnotmiss;
+set project2.labtesting;
+if ptid=. then output ptidmiss;
+else output ptidnotmiss;
+run;
+
+/* data cleaning */
+data labtesting;
+set project2.labtesting;
+if ptid=. then ptid=1;
+run;
+
+/* preparing the analysis dataset */
+data table6;
+set labtesting;
+keep ptid sc hg urea wbc sodium neutrophils eosinophils basophils potassium lymphocytes sugar monocytes platelets sb sgot sgpt;
+run;
+
+/* generating the table6 */
+proc means data=table6 noprint;
+var sc--sgpt;
+output out=table6a (drop=_:)
+       n=
+       mean=
+       stddev=  /autoname;
+run;
+
+proc transpose data=table6a out=table6b;
+run;
+                  
+data table6c;
+set table6b;
+stat=scan(_name_,2, "_");
+rename _label_=Label;
+drop _name_;
+run;
+
+data n mean stddev;
+set table6c;
+if stat="N" then output n;
+else if stat="Mean" then output mean;
+else output stddev;
+run;
+
+proc sql;
+create table table6d as
+select n.label, n.col1 as n, mean.col1 as mean, stddev.col1 as stddev from n, mean, stddev
+where n.label=mean.label and mean.label=stddev.label;
+quit;
+
+proc format;
+   value $label "Sc"="SC"
+                 "Hg"="Hemoglobin"
+                 "Urea"="Urea"
+                 "Wbc"="White Blood Cells"
+                 "Sodium"="Sodium"
+                 "Neutrophils"="Neutrophils"
+                 "Eosinophils"="Eosinophils"
+                 "Basophils"="Basophils"
+                 "Possium"="Potassium"
+                 "Lmphocytes"="Lymphocytes"
+                 "Sgar"="Sugar"
+                 "Mnocytes"="Monocytes"
+                 "Patelets"="Platelets"
+                  "Sb"="SB"
+                  "Sgot"="SGOT"
+                  "Sgpt"="SGPT";
+run;
+
+ods rtf file="/folders/myfolders/project2/table6.rtf";
+options nodate nonumber;
+title "Table 6. Analysis of Patient Blood History Data";
+proc print data=table6d noobs label;
+format mean 8.2 stddev 7.2;
+format label $label.;
+label label=Label;
+run;
+ods rtf close;
+
+
+/* table 7 */
+
+/* preparing the analysis dataset */
+data table7;
+set project2.labtesting;
+keep ptid urineanalysis urinepregnancy ecg;
+run;
+
+/* data validation */
+data a;
+set table7;
+miss_n=cmiss(of urineanalysis urinepregnancy ecg);
+run;
+
+/* generating the table7 */
+proc format;
+  value $test "N"="Normal"
+              "NAD"="NAD"
+              "WNL"="Within Normal Limits"
+              "Ne"="Negative"
+              "NA"="Not Applicable";
+run;
+
+proc format;
+   picture pctfmt  low-high="009.9%";
+run;
+ 
+ 
+ods rtf file="/folders/myfolders/project2/table7.rtf";
+options nodate nonumber; 
+title "Table 7. Summary of Urine Analysis, Pregnancy and ECG";
+proc tabulate data=table7;
+class urineanalysis urinepregnancy ecg;
+table (urineanalysis urinepregnancy ecg) , all*(n pctn*f=pctfmt7.1);
+format urineanalysis urinepregnancy ecg $test.;
+keylabel n="N"
+         pctn="Percent"
+         all=" ";
+label urineanalysis=Urine Analysis
+      urinepregnancy=Pregnacncy
+      ecg=ECG;
+run;
+ods rtf close;
+
+
+/* MIGRAINE ATTACK */
+
+/* table 8*/
+
+/* data accessing */
+proc import out=project2.Migraineattackdets
+   datafile="/folders/myfolders/project2/Migraineattackdets.xlsx"
+   dbms=xlsx
+   replace;
+   run;
+
+/* preparing the analysis dataset */
+data table8;
+set project2.Migraineattackdets;
+keep ptid V1attksincemonths V1attkfreqpm V1durationattk;
+rename V1attksincemonths=a
+      V1attkfreqpm=b
+      V1durationattk=c;
+run;
+
+/* generating the table 8 */
+proc means data=table8 noprint;
+var a b c;
+output out=table8a (drop=_:)
+       n=
+       mean=
+       stddev= /autoname;
+run;
+
+proc transport data=table8a out=table8b;
+run;
+
+
+data table8c (drop=_:);
+set table8b;
+stat=scan(_name_,2,"_");
+varname=scan(_name_,1,"_");
+run;
+
+proc sort data=table8c;
+by varname;
+run;
+
+proc transpose data=table8c out=table8d (drop=_name_);
+by varname;
+id stat;
+var col1;
+run;
+
+proc format;
+ value $var "a"="Time Since Initial Attack (Months)"
+            "b"="Frequency Of Attack In A Month"
+             "c"="Duration Of Attack (Hours)";
+          run;
+
+ods rtf file="/folders/myfolders/project2/table8.rtf";
+options nodate nonumber;
+title "Table 8. Averages of Time Since Initial Attack (Months), Frequency and Duration";
+proc print data=table8d noobs label;
+format varname $var.;
+format mean stddev 6.2;
+label varname=Label
+      stddev="Std Dev";
+run;
+ods rtf close;
+
+
+/* table 9*/
+/* preparing the analysis dataset */
+proc format;
+   value $yorn "N"="No"
+                "Y"="Yes";
+                run;
+                
+data table9;
+set project2.Migraineattackdets;
+format v1aura v1nausea v1blurvision v1ptphobia v1pnphobia $yorn.;
+keep ptid v1aura v1nausea v1blurvision v1ptphobia v1pnphobia;
+run;
+
+/* data validation */
+data test;
+set table9;
+count=cmiss(of v1:);
+run;
+
+/* generating the table 9 */
+ods rtf file="/folders/myfolders/project2/table9.rtf";
+options nodate nonumber;
+title "Table 9. Analysis of Side Effects Due to Migraine Attack";
+proc tabulate data=table9;
+class v1aura v1nausea v1blurvision v1ptphobia v1pnphobia;
+table v1aura v1nausea v1blurvision v1ptphobia v1pnphobia,all*(n pctn*f=pctfmt7.1);
+keylabel all=" "
+         pctn="Percent";
+label v1aura=Aura 
+      v1nausea=Nausea 
+      v1blurvision=Blurred Vision
+      v1ptphobia=Photophobia 
+      v1pnphobia=Phonophobia;        
+run;
+ods rtf close;
+
+
+
+/* table 10*/
+/* preparing the analysis dataset */
+data table10;
+set project2.history;
+keep ptid Drintakecondition Drintakedrug Drintakegeneric Drintakedose Drintakecontinues DrintakecontYdose Drintakenperiodofdisc Drintakedur;
+run;
+
+/* data cleaning */
+data table10a;
+set table10;
+if Drintakecondition="migrane" then Drintakecondition="migraine";
+drop ptid;
+run;
+
+data table10b table11;
+set table10a;
+if Drintakecondition="migraine" then output table10b;
+else output table11;
+run;
+
+ods rtf file="/folders/myfolders/project2/table10.rtf";
+options nodate nonumber; 
+title "Table10. Analysis of patient history based on drug intake for migraine";
+proc print data=table10b noobs label;
+label Drintakecondition=Drug condition
+      Drintakedrug=Drug
+      Drintakegeneric=Generic
+      Drintakedose=Dose
+      Drintakecontinues=Continued
+      DrintakecontYdose=Dose
+      Drintakenperiodofdisc=Dis-continuation
+      Drintakedur=Duration;
+run;
+ods rtf close;
+
+/* table 11*/
+
+ods rtf file="/folders/myfolders/project2/table11.rtf";
+options nodate nonumber; 
+title "Table11. Analysis of patient history based on drug intake for other diseases";
+proc print data=table11 noobs label;
+label Drintakecondition=Drug condition
+      Drintakedrug=Drug
+      Drintakegeneric=Generic
+      Drintakedose=Dose
+      Drintakecontinues=Continued
+      DrintakecontYdose=Dose
+      Drintakenperiodofdisc=Dis-continuation
+      Drintakedur=Duration;
+run;
+ods rtf close;
+
+
+/* VISIT 2 */
+/* ANALYSIS OF CLINICAL EXAMINATION */
+
+/* table 12*/
+/* preparing the analysis dataset */
+data table12;
+set project2.clinicalexamv1v2;
+where visit=2;
+keep ptid visit pulse bpsystolic bpdiastolic;
+rename pulse=a 
+       bpsystolic=b
+       bpdiastolic=c;
+run;
+
+/* generating the table 12 */
+proc means data=table12 noprint;
+var a b c;
+output out=table12a (drop=_:)
+       n=
+       mean=
+       stddev=  /autoname;
+run;
+
+proc transpose data=table12a out=table12b;
+run;
+
+data table12c (drop=_:);
+set table12b;
+varname=scan(_name_,1, "_");
+stat=scan(_name_,2,"_");
+run;
+
+proc sort data=table12c;
+by varname;
+run;
+
+proc transpose data=table12c out=table12d (drop=_name_);
+by varname;
+id stat;
+var col1;
+run;
+
+proc format;
+  value $var "a"="Pulse" 
+              "b"="Systolic Blood Pressurec"
+              "c"="Diastolic Blood Pressure";
+             run;
+
+
+ods rtf file="/folders/myfolders/project2/table12.rtf";
+options nodate nonumber;
+title "Table 12. Means of Blood Pressure and Pulse Rate";
+proc print data=table12d noobs label;
+format varname $var.;
+format mean stddev 6.2;
+label varname=Label
+      stddev="Std Dev";
+run;
+ods rtf close;
+
+
+/* table 13*/
+/* preparing the analysis dataset */
+data table13;
+set project2.clinicalexamv1v2;
+where visit=2;
+keep ptid visit cardio respiratory abdomen cns;
+run;
+
+/* data validation */
+data test;
+set table13;
+if cmiss(cardio) | cmiss(respiratory) | cmiss(abdomen) | cmiss(cns)
+ then output;
+ run;
+/*  no missing value */
+ 
+ /* generating the table 13 */
+ods rtf file="/folders/myfolders/project2/table13.rtf";
+options nodate nonumber;
+title "Table 13. Summary of Other diseases";
+proc tabulate data=table13;
+class cardio respiratory abdomen cns;
+table (cardio respiratory abdomen cns),(all=" ")*(n pctn="Percent");
+run;
+ods rtf close;
+
+/* Evaluation of Time Difference between Migraine Attack Time and Migraine Attack Reported Time, Nausea and Blood Pressure (Table 14 – Table 22) */
+
+/* table 14*/
+/* data accessing */
+proc import out=project2.visit2
+         datafile="/folders/myfolders/project2/Visit2.xlsx"
+         dbms=xlsx
+         replace;
+         run;
+
+/* preparing the analysis dataset */
+data table14;
+set project2.visit2;
+keep ptid uniquekey Evaltime EvaltimetypeHrs Evanausea Migpresentattk MigpresentAttktime Migreporttime;
+run;
+
+
+data table14;
+set project2.visit2;
+ff=Migreporttime-MigpresentAttktime;
+where EvaltimetypeHrs="0hours";
+format ff 5.3;
+keep ptid Evanausea ff;
+run;
+
+/* generating the table 14 */
+
+proc means data=table14 noprint;
+var Evanausea ff;
+output out=table14a (drop=_:)
+       n=
+       mean=
+       stddev= /autoname;
+       run;
+       
+proc transpose data=table14a out=table14b;
+run;
+
+data table14c (drop=_:);
+set table14b;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,2,"_");
+run;
+
+proc sort data=table14c;
+by varname;
+run;
+
+proc transpose data=table14c out=table14d (drop=_name_);
+by varname;
+id stat;
+var col1;
+run;
+
+/* generating the table 14 */
+proc format;
+   value $var "evanausea"="Evaluation of Nausea"
+               "ff"="Time Difference between MAT and MART"
+           run;
+           
+
+ods rtf file="/folders/myfolders/project2/table14.rtf";
+options nodate nonumber;
+title "Table 14.  Initial Evaluation";
+proc print data=table14d noobs label;
+format varname $var. mean stddev 5.1;
+label varname=Label
+      stddev=Std Dev;
+run;
+ods rtf close;         
+   
+/* table 15*/
+
+/* merge two table to create analysis dataset */
+
+/* create marco for merge two table */
+
+%macro merg(hrs);
+data table15a;
+set project2.clinicalexamv1v2;
+where visit=2;
+keep ptid visit bpsystolic bpdiastolic;
+run;
+
+data table15b;
+set project2.visit2;
+where EvaltimetypeHrs="&hrs";
+keep ptid EvaltimetypeHrs Evanausea;
+run;
+
+proc sort data=table15a;
+by ptid;
+run;
+
+proc sort data=table15b;
+by ptid;
+run;
+
+data table15c;
+merge table15a table15b;
+by ptid;
+keep ptid Evanausea bpsystolic bpdiastolic;
+rename Evanausea=c bpsystolic=a bpdiastolic=b;
+run;
+
+%mend;
+
+%merg(0.5hours)
+
+
+/* create and store macro program */
+
+
+%macro tbl (var,title,varfmt);
+
+proc means data=table15c noprint;
+var &var;
+output out=table15d (drop=_:)
+       n=
+       mean=
+       stddev=  /autoname;
+       run;
+ 
+proc transpose data=table15d out=table15e;
+run;
+
+data table15f (drop=_:);
+set table15e;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,2,"_");
+run;
+
+proc sort data=table15f;
+by varname;
+run;
+
+proc transpose data=table15f out=table15g (drop=_name_);
+by varname;
+id stat;
+var col1;
+run;
+
+proc format;
+  value $vara  "a"="Systolic Blood Pressurec"
+              "b"="Diastolic Blood Pressure"
+              "c"="Evaluation of Nausea";
+  value $varb "a"="Systolic Blood Pressurec"
+              "b"="Diastolic Blood Pressure";
+     run;
+     
+title "&title";
+proc print data=table15g noobs label;
+format varname &varfmt;
+format stddev 5.1;
+label varname=Label stddev=Std Dev;
+run;
+
+%mend;
+
+options mprint;
+ods rtf file="/folders/myfolders/project2/table15.rtf";
+options nodate nonumber;
+%tbl (a b c,Table 15. Evaluation after 30 Minutes,$vara.);
+ods rtf close;
+
+/* table 16*/
+
+%merg(1hours)
+
+ods rtf file="/folders/myfolders/project2/table16.rtf";
+options nodate nonumber;
+%tbl (a b c,Table 16. Evaluation after 1 Hour,$vara.);
+ods rtf close;
+
+
+/* table 17*/
+
+%merg(2hours)
+
+ods rtf file="/folders/myfolders/project2/table17.rtf";
+options nodate nonumber;
+%tbl (a b c,Table 17. Evaluation after 2 Hours,$vara.)
+ods rtf close;
+
+
+/* table 18*/
+
+%merg(3hours)
+
+ods rtf file="/folders/myfolders/project2/table18.rtf";
+options nodate nonumber;
+%tbl (a b c,Table 18. Evaluation after 3 Hours,$vara.)
+ods rtf close;
+
+
+/* table 19*/
+
+%merg(4hours)
+
+ods rtf file="/folders/myfolders/project2/table19.rtf";
+options nodate nonumber;
+%tbl (a b c,Table 19. Evaluation after 4 Hours,$vara.)
+ods rtf close;
+
+
+/* table 20*/
+
+%merg(6hours)
+ 
+ods rtf file="/folders/myfolders/project2/table20.rtf";
+options nodate nonumber;
+%tbl (a b,Table 20. Evaluation after 6 Hours,$varb.)
+ods rtf close;
+
+
+/* table 21*/
+ 
+%merg(6-24hours)
+
+ods rtf file="/folders/myfolders/project2/table21.rtf";
+options nodate nonumber;
+%tbl (a b,Table 21. Evaluation between 6 – 24 Hours,$vara.)
+ods rtf close;
+
+
+/* SUMMARY OF PATIENT STATUS */
+
+/* table 22*/
+
+/* data accessing */
+proc import out=project2.summary
+            datafile="/folders/myfolders/project2/summary.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+ 
+/* preparing analysis dataset */
+data table22;
+set project2.summary;
+keep ptid Funcdisability Ptglobalevaluation Invglobalevaluation Ptstdystatus;
+run;
+
+/* check missing value */
+data test;
+set table22;
+if cmiss(Funcdisability) | cmiss(Ptglobalevaluation) | cmiss(Invglobalevaluation) | cmiss(Ptstdystatus) then output;
+run;
+
+/* generating the table 22 */
+proc format;
+    picture pctfmt low-high="0.09.9%";
+run;
+
+
+ods rtf file="/folders/myfolders/project2/table22.rtf";
+options nodate nonumber;
+title "Table 22. Analysis of Functional Capability and Global Evaluation";
+proc tabulate data=table22;
+class Funcdisability Ptglobalevaluation Invglobalevaluation Ptstdystatus;
+table (Funcdisability Ptglobalevaluation Invglobalevaluation Ptstdystatus),all*(n pctn*f=pctfmt7.1);
+keylabel all=" "
+         n="N"
+         pctn="Percent";
+label Funcdisability="Functional Disability" 
+      Ptglobalevaluation="Patient Global Evaluation"  
+      Invglobalevaluation="Investigation Global Evaluation" 
+      Ptstdystatus="Patient Study Status";
+run;
+ods rtf close;     
+
+
+
+
+
+
+
+
