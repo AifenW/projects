@@ -1,0 +1,1414 @@
+libname project3 "/folders/myfolders/project3";
+
+/*SAP (statistical analysis plan)
+ Pooled  RESULTS
+ DEMOGRAPHICS SUMMARY REPORTS;
+
+
+/* import the dataset POOLED */
+
+proc import out=project3.pooled
+            datafile="/folders/myfolders/project3/POOLED.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+
+ 
+/* import the dataset control */
+proc import out=project3.control
+            datafile="/folders/myfolders/project3/control.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+ 
+
+/* import the dataset Single */
+
+proc import out=project3.single
+            datafile="/folders/myfolders/project3/single.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+ 
+ 
+/* import the dataset Double */
+
+proc import out=project3.double
+            datafile="/folders/myfolders/project3/double.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+
+
+/* import the dataset Triple */
+
+proc import out=project3.triple
+            datafile="/folders/myfolders/project3/triple.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+
+
+ 
+/* Table 1 */
+                   
+/* create macro for table1  ---age          */
+
+
+%macro age (tbl,file)/;
+           
+/* preparing subset dataset for table1 */
+data table1;
+set &tbl;
+keep sr_number rec_age don_age;
+run;
+
+/* data validation */
+data _null_;
+set table1;
+if rec_age=. |don_age=. then 
+put "sr_number is " sr_number "rec_age is " rec_age "don_age is " don_age;
+run;
+
+/* generating the table1 */
+proc means data=table1 noprint;
+var rec_age don_age;
+output out=table1a (drop=_:)
+       mean=
+       stddev=  /autoname;         
+run;
+
+proc transpose data=table1a out=table1b;
+run;
+
+data table1c (drop=_:);
+set table1b;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,3,"_");
+run;
+
+proc sort data=table1c;
+by descending varname;
+run;
+
+proc transpose data=table1c out=table1d (drop=_:);
+by descending varname;
+id stat;
+var col1;
+run;
+
+/* output the table1 */
+proc format;
+   value $cat "rec"="Recipient"
+              "don"="Donor";
+run;
+
+ 
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "Table 1: Age Analysis";
+proc print data=table1d noobs label;
+label varname=Category
+       StdDev=Std;
+format varname $cat.;
+format Mean Stddev 6.2;
+run;
+ods rtf close;
+
+%mend age;
+
+
+/* Table 1 */
+options mprint mlogic symbolgen;
+
+%age(project3.pooled,pooled_table1)
+
+
+/* Table 2 */
+
+                   
+/* create macro for table2  ---rel         */
+
+%macro rel (tbl,file);
+
+/* preparing subset dataset for table2 */
+data table2;
+set &tbl;
+keep sr_number don_rel;
+run;
+
+/* data cleaning  */
+/* preparing the analysis table */
+/* SAS only uses the underlying values for the sort, so here create a new column that contains the formatted value */
+proc format;
+   value $catgfmt "mother","father"="Related"
+                   "wife"="Spousal"
+                   other ="Unrelated";
+        run;
+        
+data table2a;
+set table2;
+format don_rel $catgfmt.;
+don_rel_fmt=put(don_rel, $catgfmt.);
+drop don_rel;
+run;
+
+proc sort data=table2a;
+by don_rel_fmt;
+run;
+
+/* generate the table  */
+
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "Table2: Relationship of recipient with donor";
+proc tabulate data=table2a;
+class don_rel_fmt;
+table don_rel_fmt=" " all="Total", all=" "/box="Category";
+keylabel 
+          n="Number of Records";
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 2 */
+
+%rel(project3.pooled,pooled_table2)
+
+/* Table 3 */
+
+                   
+/* create macro for table3  ---gender         */
+
+%macro gen (tbl,file);
+
+/* preparing subset dataset for table3 */
+data table3;
+set &tbl;
+keep sr_number rec_sex don_sex;
+run;
+
+/* data cleaning */
+proc sql noprint;
+select count(distinct(rec_sex)) as rec_sex_level,
+count(distinct(don_sex)) as don_sex_level
+from table3;
+quit;
+
+data test;
+set table3;
+where don_sex not in ("male", "female");
+run;
+
+data table3a;
+set table3;
+if sr_number=27 then don_sex="female";
+run;
+
+/* generate the table  */
+
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "Table 3:  Gender Analysis";
+proc tabulate data=table3a;
+class rec_sex don_sex;
+table (rec_sex don_sex),all=" "/box="Category";
+keylable n="Total";
+label rec_sex=Recipient don_sex=Donor;
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 3 */
+
+
+%gen(project3.pooled,pooled_table3)
+
+
+/* LAB SUMMARY REPORTS: */
+/* Table 4 */
+
+                   
+/* create  macro for table4 ---ser        */
+
+
+%macro ser (tbl,file,title);
+
+/* preparing subset dataset for table4 */  
+
+/* input():  one (or more) of the incoming character variables contains text that can't legitimately be converted to numeric. */
+/* get rid of the message by adding ??  */
+/* That doesn't fix the problem, just covers it up */
+
+data table4;
+set &tbl;
+day3=input(gra_func_creatine_3day,5.2);
+day7=input(gra_func_creatine_7day,5.2);
+day15=input(gra_func_creatine_15day,5.2);
+day30=input(gra_func_creatine_30day,??5.2);
+day90=input(gra_func_creatine_90day,??5.2);
+day180=input(gra_func_creatine_6months,5.2);
+day360=input(gra_func_creatine_1year,5.2);
+day720=input(gra_func_creatine_2year,5.2);
+format day3 day7 day15 day30 day90 day180 day360 day720 5.2;
+keep sr_number day3 day7 day15 day30 day90 day180 day360 day720;
+run;
+
+/* generating table4 */
+
+proc means data=table4 noprint;
+var day3 day7 day15 day30 day90 day180 day360 day720;
+output out=table4a (drop=_:)
+       n=
+       mean=
+       std=
+       range= /autoname;
+run;
+
+proc transpose data=table4a out=table4b;
+run;
+
+
+proc format;
+   value $dayfmt "day3"="a" 
+                  "day7"="b"
+                  "day15"="c" 
+                  "day30"="d" 
+                  "day90"="e"
+                   "day180"="f" 
+                   "day360"="g" 
+                   "day720"="h";
+run;
+
+data table4c;
+set table4b;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,2,"_");
+format varname $dayfmt.;
+day_fmt=put(varname,$dayfmt.);
+drop _name_ varname;
+run;
+
+proc sort data=table4c;
+by day_fmt;
+run;
+
+proc transpose data=table4c out=table4d (drop=_name_);
+by day_fmt;
+id stat;
+var col1;
+run;
+
+proc format;
+   value $day2fmt "a"="day3"
+                  "b"="day7"
+                 "c"= "day15"
+                  "d"="day30" 
+                  "e"="day90"
+                   "f"="day180"
+                   "g"="day360"
+                   "h"="day720";
+run;
+
+ods noproctitle;
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber;
+title "&title";
+proc print data=table4d noobs label;
+
+format day_fmt $day2fmt.;
+format n mean stddev range 5.2;
+label day_fmt="Day"
+      StdDev="Std";
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 4 */
+
+%ser(project3.pooled,pooled_table4,Table 4: Analysis of Serum Creatinine on Different Days)
+
+
+/* Table 5 */
+
+/* create and store labsum macro program */
+
+%macro labsum(dsn, name, file, title);
+
+/* preparing subset dataset */ 
+data tbl;
+set &dsn;
+day0=input(rec_&name._day,??5.2);
+day3=input(rec_&name._3day,??5.2);
+day7=input(rec_&name._7day,??5.2);
+day14=input(rec_&name._14day,??5.2);
+day30=input(rec_&name._30day,??5.2);
+day90=input(rec_&name._90day,??5.2);
+day180=input(rec_&name._6months,??5.2);
+day360=input(rec_&name._1year,??5.2);
+day720=input(rec_&name._2years,??5.2);
+format day0 day3 day7 day14 day30 day90 day180 day360 day720 5.2;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720;
+run;
+
+proc means data=tbl noprint;
+var day0 day3 day7 day14 day30 day90 day180 day360 day720;
+output out=outtbl1(drop=_:)
+        n=
+        mean=
+        stddev=
+        range=   /autoname;
+run;
+
+proc transpose data=outtbl1 out=outtbl2;
+run;
+
+proc format;
+   value $dayfmt "day0"="a" 
+                  "day3"="b"
+                  "day7"="c" 
+                  "day14"="d" 
+                  "day30"="e"
+                   "day90"="f" 
+                   "day180"="g" 
+                   "day360"="h"
+                   "day720"="i";
+run;
+
+
+data outtbl3;
+set outtbl2;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,2,"_");
+format varname %nrstr($dayfmt.);
+day_fmt=put(varname,%nrstr($dayfmt.));
+drop _name_ varname;
+run;
+
+proc sort data=outtbl3;
+by day_fmt;
+run;
+
+proc transpose data=outtbl3 out=outtbl4 (drop=_name_);
+by day_fmt;
+id stat;
+var col1;
+run;
+
+proc format;
+   value $day2fmt "a"="day0"
+                  "b"="day3"
+                  "c"="day7"
+                 "d"= "day14"
+                  "e"="day30" 
+                  "f"="day90"
+                   "g"="day180"
+                   "h"="day360"
+                   "i"="day720";
+run;
+
+
+ods noproctitle;
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber;
+title "&title";
+proc print data=outtbl4 noobs label;
+format day_fmt %nrstr($day2fmt.);
+format n mean stddev range 5.2;
+label day_fmt="Day"
+      N="no of records"
+      StdDev="Std";
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 5 */
+
+options mprint mlogic symbolgen;
+
+%labsum(project3.pooled,cd3,pooled_table5,TABLE 5: ANALYSIS OF HB IN DIFFERENT DAYS)
+
+
+
+/* Table 6 */
+
+
+%labsum(project3.pooled,platelets,pooled_table6,TABLE 6: ANALYSIS OF PLATELETS IN DIFFERENT DAYS)
+
+
+/* Plot 3 */
+
+
+
+/* Table 7 */
+
+/* create and store macro for table7   ---uri         */
+
+
+%macro uri (tbl,file,title);
+
+/* preparing subset dataset for table7 */  
+data table7;
+set &tbl;
+array rec {9} $ rec_urine_r_e_0day rec_urine_r_e_3day rec_urine_r_e_7day rec_urine_r_e_14day  rec_urine_r_e_30day 
+              rec_urine_r_e_90day rec_urine_r_e_6months rec_urine_r_e_1year rec_urine_r_e_2years;
+do i=1 to 9;
+if anyalpha(rec(i)) |anydigit(rec(i)) then rec(i)="rec";
+else rec(i)=" ";
+end;
+keep sr_number rec_urine_r_e_:;
+run;
+
+/* proc tabulate noprint */
+ods select none;
+proc tabulate data=table7 out=table7a (drop=_:);
+class rec_urine_r_e_:/missing;
+table rec_urine_r_e_:,all=" "*n/box="Day";
+run; 
+ods select all;
+
+data table7b;
+set table7a;
+if cmiss(of rec_urine_r_e_:)=9 then delete;
+/* length colvar $50; */
+/* colvar=coalescec(of rec_urine_r_e_:); */
+run;
+              
+proc transpose data=table7b out=table7c(drop=_label_ col:);
+var rec_urine_r_e_:;
+run;
+
+/* generating the table7 */
+proc format;
+ value $day "rec_urine_r_e_0day"="day0"
+       "rec_urine_r_e_3day"="day3"
+       "rec_urine_r_e_7day"="day7"
+       "rec_urine_r_e_14day"="day14"
+       "rec_urine_r_e_30day"="day30"
+       "rec_urine_r_e_90day"="day90"
+        "rec_urine_r_e_6months"="day180"
+         "rec_urine_r_e_1year"="day360"
+          "rec_urine_r_e_2years"="day720";
+run;
+
+data table7d;
+set table7c;
+set table7b;
+format _name_ $day.;
+keep _name_ n;      
+run;
+
+/* printing the table7 */
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber;
+title "&title";
+proc print data=table7d noobs label;
+label _name_=Day
+       n=No of records oberved;
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 7 */
+
+%uri(project3.pooled,pooled_table7, Table 7:ANALYSIS OF URINE TEST)
+
+
+/* Table 8 */
+
+options mprint mlogic symbolgen;
+
+%labsum(project3.pooled,cd3,pooled_table8,Table 8: Analysis of CD3 in different days)
+
+
+/* Table 9 */
+
+options mprint mlogic symbolgen;
+
+%labsum(project3.pooled,cd4,pooled_table9,TABLE 9 : ANALYSIS ON CD4 IN DIFFERENT DAYS)
+
+/* Table 10 */
+
+%labsum(project3.pooled,cd8,pooled_table10,TABLE 10 : ANALYSIS ON CD8 IN DIFFERENT DAYS)
+
+
+/* Table 11 */
+data table11;
+set project3.pooled;
+keep sr_number rec_a_hla don_a_hla rec_b_hla don_b_hla rec_dr_hla don_dr_hla;
+run;
+
+/* splitting string that contains commas */
+data table11a;
+set table11;
+do i=1 to 2;
+ a_rec=scan(rec_a_hla,i,",");
+  b_rec=scan(rec_b_hla,i,",");
+  dr_rec=scan(rec_dr_hla,i,",");
+   a_don=scan(don_a_hla,i,",");
+     b_don=scan(don_b_hla,i,",");
+      dr_don=scan(don_dr_hla,i,",");
+ output;
+end;
+drop rec_a_hla don_a_hla rec_b_hla don_b_hla rec_dr_hla don_dr_hla i;
+run;
+
+/* creating the table contain rec information */
+data table11a1;
+set table11a;
+by sr_number;
+keep sr_number a_rec b_rec dr_rec;
+run;
+
+/* creating the table contain don information */
+data table11a2;
+set table11a;
+by sr_number;
+keep sr_number a_don b_don dr_don;
+run;
+
+/* creating cartesian join by group using proc sql  */
+proc sql;
+create table table11b as
+(select table11a1.sr_number, a_rec as rec, a_don as don from table11a1, table11a2 where table11a1.sr_number=table11a2.sr_number)
+union
+(select table11a1.sr_number, b_rec, b_don from table11a1, table11a2 where table11a1.sr_number=table11a2.sr_number)
+union
+(select table11a1.sr_number, dr_rec, dr_don from table11a1, table11a2 where table11a1.sr_number=table11a2.sr_number);
+quit;
+
+
+data table11c;
+set table11b;
+by sr_number;
+where rec is not missing and don is not missing;
+if rec=don;
+run;
+
+/* counting hlm by sr_number */
+data table11d;
+set table11c;
+by sr_number;
+if first.sr_number then hlm=0;
+hlm+1;
+if last.sr_number then output;
+keep sr_number hlm;
+run;
+
+/* generating the table 11 */
+data table11e;
+merge table11 table11d;
+by sr_number;
+retain rec_a_hla don_a_hla rec_b_hla don_b_hla rec_dr_hla don_dr_hla hlm;
+if hlm=" " then hlm=0;
+drop sr_number;
+run;
+
+/* printing the table 11 */
+ods rtf file="/folders/myfolders/project3/pooled_table11.rtf";
+options nodate nonumber; 
+title "TABLE 11: HLA MATCHING";
+proc print data=table11e no obs;
+run;
+ods rtf close;
+
+
+/* Table 12 */
+
+
+%labsum(project3.pooled,tlc,pooled_table12,TABLE I2: ANALYSIS OF TLC ON DIFFERENT DAYS)
+
+
+
+
+/* MEDICATION SUMMARY REPORTS */
+
+/* create labsumx macro program */
+
+%macro labsumx(dsn, varname, file, title);
+
+
+proc means data=&dsn noprint;
+var &varname;
+output out=outtbl1(drop=_:)
+        n=
+        mean=
+        stddev=
+        range=   /autoname;
+run;
+
+proc transpose data=outtbl1 out=outtbl2;
+run;
+
+proc format;
+   value $dayfmt "day0"="a" 
+                  "day3"="b"
+                  "day7"="c" 
+                  "day14"="d" 
+                  "day30"="e"
+                   "day90"="f" 
+                   "day180"="g" 
+                   "day360"="h"
+                   "day720"="i";
+run;
+
+
+data outtbl3;
+set outtbl2;
+varname=scan(_name_,1,"_");
+stat=scan(_name_,2,"_");
+format varname %nrstr($dayfmt.);
+day_fmt=put(varname,%nrstr($dayfmt.));
+drop _name_ varname;
+run;
+
+proc sort data=outtbl3;
+by day_fmt;
+run;
+
+proc transpose data=outtbl3 out=outtbl4 (drop=_name_);
+by day_fmt;
+id stat;
+var col1;
+run;
+
+proc format;
+   value $day2fmt "a"="day0"
+                  "b"="day3"
+                  "c"="day7"
+                 "d"= "day14"
+                  "e"="day30" 
+                  "f"="day90"
+                   "g"="day180"
+                   "h"="day360"
+                   "i"="day720";
+run;
+
+
+ods noproctitle;
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber;
+title "&title";
+proc print data=outtbl4 noobs label;
+format day_fmt %nrstr($day2fmt.);
+format n mean stddev range 5.2;
+label day_fmt="Day"
+      N="no of records"
+      StdDev="Std";
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 13 */
+/* preparing the subset for table13 */
+data table13;
+set project3.pooled;
+keep sr_number rec_mmfdose_0day rec_mmfdose_3day rec_mmfdose_7day rec_mmfdose_14day rec_mmfdose_30day rec_mmfdose_90day rec_mmfdose_6months rec_mmfdose_1year rec_mmfdose_2years;
+run;
+
+data table13a;
+set table13;
+array dosechar {9} $ rec_mmfdose_0day rec_mmfdose_3day rec_mmfdose_7day rec_mmfdose_14day rec_mmfdose_30day rec_mmfdose_90day rec_mmfdose_6months rec_mmfdose_1year rec_mmfdose_2years;
+array dosenum {9}  day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+do n=1 to 9;
+i=find(dosechar(n),"mg");
+start=i-3;
+if start ge 1 then
+dosechar(n)=substr(dosechar(n),start,3);
+else dosechar(n)=" ";
+dosenum(n)=input(dosechar(n),3.);
+end;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+run;
+
+
+%labsumx(table13a,day0 day3 day7 day14 day30 day90 day180 day360 day720,pooled_table13,TABLE 13: ANALYSIS OF MMF DOSE IN DIFFERENT DAYS)
+
+
+/* Table 14 */
+/* preparing the subset for table14 */
+data table14;
+set project3.pooled;
+keep sr_number rec_wysolonedose_3day rec_wysolonedose_7day rec_wysolonedose_14day rec_wysolonedose_30day rec_wysolonedose_90day rec_wysolonedose_6months rec_wysolonedose_1year;
+run;
+
+
+data table14a;
+set table14;
+array dosechar {7} $ rec_wysolonedose_3day rec_wysolonedose_7day rec_wysolonedose_14day rec_wysolonedose_30day rec_wysolonedose_90day rec_wysolonedose_6months rec_wysolonedose_1year;
+array dosenum {7}  day3 day7 day14 day30 day90 day180 day360 ; 
+do n=1 to 7;
+i=find(dosechar(n),"mg");
+start=i-2;
+if start ge 1 then
+dosechar(n)=substr(dosechar(n),start,2);
+else dosechar(n)=" ";
+dosenum(n)=input(dosechar(n),2.);
+end;
+day0=.;
+day720=.;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+run;
+
+
+%labsumx(table14a,day0 day3 day7 day14 day30 day90 day180 day360 day720,pooled_table14, TABLE 14: ANALYSIS OF WYS DOSE TEST ON DIFFERENT DAYS)
+
+
+/* Table 15 */
+/* preparing the subset for table15 */
+data table15;
+set project3.pooled;
+keep sr_number rec_atg_doses;
+run;
+
+
+data table15a;
+set table15;
+do i=1 to countw(rec_atg_doses,",");
+dose_time=scan(rec_atg_doses,i,",");
+output;
+end;
+drop i;
+run;
+
+data table15b;
+set table15a;
+if find(dose_time,"mg")=0 then do; dose=" "; time=" "; end;
+else if find(dose_time,"*")=0 then do; dose=dose_time; time=1; end;
+else do;
+dose=scan(dose_time,1,"*");
+time=scan(dose_time,2,"*");
+end;
+run;
+
+data table15b;
+set table15a;
+dose=scan(dose_time,1,"*");
+time=scan(dose_time,2,"*");
+if dose="not known" then dose=" ";
+if find(dose,"mg") and time=" " then time="1";
+dosenum=input(compress(dose,,"kd"), 3.);
+timenum=input(time,1.);
+tdose=dosenum*timenum;
+keep sr_number rec_atg_doses dosenum timenum tdose;
+run;
+
+
+data table15c;
+set table15b;
+by sr_number;
+if first.sr_number then do; totdose=.; tottime=.;end;
+totdose+tdose;
+tottime+timenum;
+if last.sr_number then output;
+keep sr_number rec_atg_doses totdose tottime;
+run;
+
+data table15d;
+set table15c;
+if totdose=0 then avg_dose=0;
+else
+avg_dose=totdose/tottime;
+format avg_dose 5.1;
+keep rec_atg_doses avg_dose;
+run;
+
+
+ods rtf file="/folders/myfolders/project3/pooled_table15.rtf";
+options nodate nonumber; 
+title "TABLE 15: ANALYSIS OFATG DOSE TEST IN DIFERENT DAYS";
+proc print data=table15d noobs label;
+label avg_dose=Avg_dose;
+run;
+ods rtf close;
+
+/* Table 16 */
+
+                   
+/* create macro for table16           */
+
+%macro ve (tbl,file,title);
+
+/* preparing the subset for table16 */
+data table16;
+set &tbl;
+keep sr_number rec_HCV_HIV_HBsAg;
+run;
+
+/* data cleaning and data manipulation */
+data table16a;
+set table16;
+hcv1=scan(rec_HCV_HIV_HBsAg,1,"/,");
+hcv=substr(hcv1,length(hcv1)-2,3);
+hiv1=scan(rec_HCV_HIV_HBsAg,2,"/,");
+hiv=substr(hiv1,1,3);
+hbs=substr(rec_HCV_HIV_HBsAg,length(rec_HCV_HIV_HBsAg)-2,3);
+keep hcv hiv hbs;
+run;
+
+/* generating the table 16 */
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "&title";
+proc tabulate data=table16a;
+class hcv hiv hbs;
+table hcv hiv hbs,n="Count"/box="LabTestName";
+label hcv="HCV"
+      hiv="HIV"
+      hbs="HBS";     
+run;
+ods rtf close;
+ 
+%mend;
+
+
+/* Table 16 */
+
+%ve(project3.pooled,pooled_table16,TABLE 16: VIRUS EFFECT)
+
+
+/* Table 17 */
+
+/* create macro for table17           */
+
+%macro atg(tbl,file,title);
+
+/* preparing the subset for table17 */
+data table17;
+set &tbl;
+keep sr_number inf_comp_viral inf_comp_bacterial inf_comp_fungal inf_comp_others;
+run;
+
+/* generating the table 17 */
+data table17a;
+set table17 end=eof;
+Viral+(anyalpha(inf_comp_viral));
+Bacterial+(anyalpha(inf_comp_bacterial));
+Fungal+(anyalpha(inf_comp_fungal));
+Others+(anyalpha(inf_comp_others));
+if eof then output;
+keep Viral Bacterial Fungal Others;
+run;
+
+proc transpose data=table17a out=table17b;
+run;
+
+/* printing the table 17 */
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "&title";
+proc print data=table17b noobs label;
+label _NAME_="Infection category"
+       COL1="No of records";
+run;
+ods rtf close;
+ 
+%mend;
+
+
+/* Table 17 */
+
+options mprint mlogic symbolgen;
+
+%atg(project3.pooled,pooled_table17,TABLE17: ADVERSE EFFECTS ON ATG DRUG)
+
+
+/* Table 18 */
+
+/* create macro for table17           */
+
+
+%macro org(tbl,file,title);
+
+/* preparing the subset for table18 */
+data table18;
+set &tbl;
+keep sr_number inf_comp_UTI inf_comp_lung inf_comp_CNS inf_comp_others1;
+run;
+
+/* generating the table 18 */
+data table18a;
+set table18 end=eof;
+UTI+(anyalpha(inf_comp_UTI));
+LUNG+(anyalpha(inf_comp_lung));
+CNS+(anyalpha(inf_comp_CNS));
+OTHERS1+(anyalpha(inf_comp_others1));
+if eof then output;
+keep UTI LUNG CNS OTHERS1;
+run;
+
+proc transpose data=table18a out=table18b;
+run;
+
+/* printing the table 18 */
+
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "&title";
+proc print data=table18b noobs label;
+label _NAME_="Origan Infected"
+       COL1="No of records";
+run;
+ods rtf close;
+
+%mend;
+
+
+/* Table 18 */
+
+options mprint mlogic symbolgen;
+
+%org(project3.pooled,pooled_table18,TABLE18: ANALYSIS OF ORGAN S INVOLVED)
+
+
+
+/* Table 19 */
+
+/* create and store macro for table19           */
+
+%macro inf(tbl,file,title);
+
+/* preparing the subset for table19 */
+data table19;
+set &tbl;
+keep sr_number non_inf_comp_nodm non_inf_comp_dyslipidemia non_inf_comp_dyselectrolytemia non_inf_comp_cosmetic;
+run;
+
+/* generating the table 19 */
+data table19a;
+set table19 end=eof;
+Nodm+(anyalpha(non_inf_comp_nodm));
+dyslipidemia+(anyalpha(non_inf_comp_dyslipidemia));
+dyselectrolytemia+(anyalpha(non_inf_comp_dyselectrolytemia));
+Cosmetic+(anyalpha(non_inf_comp_cosmetic));
+if eof then output;
+keep Nodm dyslipidemia dyselectrolytemia Cosmetic;
+run;
+
+proc transpose data=table19a out=table19b;
+run;
+
+/* printing the table 19 */
+ods rtf file="/folders/myfolders/project3/&file..rtf";
+options nodate nonumber; 
+title "&title";
+proc print data=table19b noobs label;
+label _NAME_="Category"
+       COL1="no of records";
+run;
+ods rtf close;
+
+%mend;
+
+/* Table 19 */
+
+options mprint mlogic symbolgen;
+
+%inf(project3.pooled,pooled_table19,TABLE19: ANALYSIS OF INFECTION)
+
+
+
+/*       */
+
+
+/* CONTROL GROUP RESULTS: */
+/* DEMOGRAPHICS SUMMARY REPORTS: */
+/*  */
+/* AGE ANALYSIS: */
+
+
+libname project3 "/folders/myfolders/project3";
+
+/* import the dataset control */
+proc import out=project3.control
+            datafile="/folders/myfolders/project3/control.xlsx"
+            dbms=xlsx
+            replace;
+            run;
+
+/* Table 1 */
+       
+
+%age(project3.control,control_table1)
+
+/* Table 2 */
+
+%rel(project3.control,control_table2)
+
+
+/* Table 3 */
+
+%gen(project3.control,control_table3)
+
+
+/* Table 4 */
+
+%ser(project3.control,control_table4,Table 4: Analysis of SERUM in different days)
+
+/* Table 5 */
+
+%labsum(project3.control,cd3,control_table5,Table 5: Analysis of CD3 in different days)
+
+/* Table 6 */
+
+%labsum(project3.control,cd4,control_table6,TABLE 6 : ANALYSIS ON CD4 IN DIFFERENT DAYS)
+
+/* Table 7 */
+
+%labsum(project3.control,cd8,control_table7,TABLE 7 : ANALYSIS ON CD8 IN DIFFERENT DAYS)
+
+/* Table 8 */
+
+%labsum(project3.control,hb,TABLE 8 : ANALYSIS OF HB ON DIFFERENT DAYS)
+
+
+/* Table 9 */
+
+
+%uri(project3.control,control_table9, Table 9:ANALYSIS OF URINE TEST)
+
+/* Table 10 */
+
+
+%labsum(project3.control,platelets,control_table10, TABLE 10: ANALYSIS OF PLT TEST ON DIFFERENT DAYS)
+
+/* VIRUS EFFECTS  */
+/* Table 11 */
+
+
+/* Table 11 */
+
+
+%ve(project3.control,control_table11,TABLE 11: Analysis of HIV HCV HBS)
+
+/* MEDICATION SUMMARY REPORTS */
+
+
+/* Table 12 */
+/* preparing the subset for table12 */
+data table12;
+set project3.control;
+keep sr_number rec_mmfdose_0day rec_mmfdose_3day rec_mmfdose_7day rec_mmfdose_14day rec_mmfdose_30day rec_mmfdose_90day rec_mmfdose_6months rec_mmfdose_1year rec_mmfdose_2years;
+run;
+
+
+data table12a;
+set table12;
+array dosechar {9} $ rec_mmfdose_0day rec_mmfdose_3day rec_mmfdose_7day rec_mmfdose_14day rec_mmfdose_30day rec_mmfdose_90day rec_mmfdose_6months rec_mmfdose_1year rec_mmfdose_2years;
+array dosenum {9}  day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+do n=1 to 9;
+i=find(dosechar(n),"mg");
+start=i-3;
+if start ge 1 then
+dosechar(n)=substr(dosechar(n),start,3);
+else dosechar(n)=" ";
+dosenum(n)=input(dosechar(n),3.);
+end;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+run;
+
+
+%labsumx(table12a,day0 day3 day7 day14 day30 day90 day180 day360 day720,control_table12,TABLE 12: ANALYSIS OF MMF DOSE IN DIFFERENT DAYS)
+
+
+/* Table 13 */
+/* preparing the subset for table14 */
+data table13;
+set project3.control;
+keep sr_number rec_wysolonedose_3day rec_wysolonedose_7day rec_wysolonedose_14day rec_wysolonedose_30day rec_wysolonedose_90day rec_wysolonedose_6months rec_wysolonedose_1year;
+run;
+
+
+data table13a;
+set table13;
+array dosechar {7} $ rec_wysolonedose_3day rec_wysolonedose_7day rec_wysolonedose_14day rec_wysolonedose_30day rec_wysolonedose_90day rec_wysolonedose_6months rec_wysolonedose_1year;
+array dosenum {7}  day3 day7 day14 day30 day90 day180 day360 ; 
+do n=1 to 7;
+i=find(dosechar(n),"mg");
+start=i-2;
+if start ge 1 then
+dosechar(n)=substr(dosechar(n),start,2);
+else dosechar(n)=" ";
+dosenum(n)=input(dosechar(n),2.);
+end;
+day0=.;
+day720=.;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720; 
+run;
+
+
+%labsumx(table13a,day0 day3 day7 day14 day30 day90 day180 day360 day720,control_table13,TABLE 13: ANALYSIS OF WYS DOSE TEST ON DIFFERENT DAYS)
+
+
+
+/* Table 14 */
+
+
+%atg(project3.control,control_table14,TABLE14: ADVERSE EFFECTS ON ATG DRUG)
+
+/* Table 15 */
+
+
+options mprint mlogic symbolgen;
+
+%org(project3.control,control_table15,TABLE 15: ANALYSIS OF ORGAN S INVOLVED)
+
+
+
+/* Table 16 */
+
+
+options mprint mlogic symbolgen;
+
+%inf(project3.control,control_table16,TABLE 16: ANALYSIS OF INFECTION TEST)
+
+
+/* COMPARISION RESULTS:  */
+/* PLOT  9: CD3 Plot */
+
+
+/* create macro program for ttest */
+/*     tt     */
+
+%macro tt (tbl,name,title);
+
+/* get cd3 data from pooled */
+
+%labsum(&tbl,&name)
+
+proc format;
+   value $day2fmt "a"="day0"
+                  "b"="day3"
+                  "c"="day7"
+                 "d"= "day14"
+                  "e"="day30" 
+                  "f"="day90"
+                   "g"="day180"
+                   "h"="day360"
+                   "i"="day720";
+run;
+
+data &name._pooled(rename=(day_fmt=day
+      Mean=mean_t));
+set outtbl4;
+format day_fmt day2fmt.
+       mean 5.2;
+keep day_fmt mean;
+run;
+
+
+/* get cd3 data from control */
+
+data control_&name;
+set project3.control;
+day0=input(rec_&name._0day,??5.2);
+day3=input(rec_&name._3day,??5.2);
+day7=input(rec_&name._7day,??5.2);
+day14=input(rec_&name._14day,??5.2);
+day30=input(rec_&name._30day,??5.2);
+day90=input(rec_&name._90day,??5.2);
+day180=input(rec_&name._6months,??5.2);
+day360=input(rec_&name._1year,5.2);
+day720=input(rec_&name._2year,5.2);
+format day0 day3 day7 day14 day30 day90 day180 day360 day720 5.2;
+keep sr_number day0 day3 day7 day14 day30 day90 day180 day360 day720;
+run;
+
+options mprint mlogic symbolgen;
+%labsum(control_&name,&name)
+
+
+data &name._control(rename=(day_fmt=day
+      Mean=mean_c));
+set outtbl4;
+format day_fmt day2fmt.
+       mean 5.2;
+keep day_fmt mean;
+run;
+
+
+/* union cd3_test and cd3_control */
+
+proc sql;
+create table &name._t_c as 
+select t.day, mean_t, mean_c from &name._pooled as t, &name._control as c
+where t.day=c.day;
+quit;
+
+
+/* prepare dataset for ttest */
+proc transpose data=&name._t_c out=&name (rename=(_name_=mean_group col1=mean));
+by day;
+var mean_t mean_c;
+run;
+
+/* output ttests data */
+ods output ttests=ttests;
+proc ttest data=&name;
+class mean_group;
+var mean;
+run;
+ods output close;
+
+/* print ttest data */
+ods rtf file="/folders/myfolders/project3/ttest_&tbl._&name..rtf";
+options nodate nonumber;
+title "&title";
+proc print data=ttests noobs;
+run; 
+ods rtf close;
+
+%mend;
+
+/* table 17 */
+
+options mprint mlogic symbolgen;
+
+%tt(project3.control,cd3,TABLE 17: T-TEST FOR CD3)
+
+/* table 18 */
+
+%tt(project3.control,cd4,TABLE 18 :T-TEST FOR CD4 FINAL)
+
+
+/* table 19*/
+
+%tt(project3.control,cd8,TABLE 19 :T-TEST FOR CD8)
+
+/* table 20*/
+
+%tt(project3.control,hb,TABLE 20: T-TEST FOR HB TEST)
+
+/* table 21*/
+
+%tt(project3.control,platelets,TABLE 21: T-TEST FOR PLT TEST)
+
+
+
+
+
+/* single group reports */
+
+options mprint mlogic symbolgen;
+
+%age(project3.single,single_table1)
+%rel(project3.single,single_table2)
+%gen(project3.single,single_table3)
+%ser(project3.single,single_table4,Table 4: Analysis of Serum Creatinine on Different Days)
+%labsum(project3.single,cd3,single_table5,Table 5: Analysis of CD3 in different days)
+%labsum(project3.single,cd4,single_table6,TABLE 6 : ANALYSIS ON CD4 IN DIFFERENT DAYS)
+%labsum(project3.single,cd8,single_table7,TABLE 7 : ANALYSIS ON CD8 IN DIFFERENT DAYS)
+%labsum(project3.single,hb,TABLE 8 : ANALYSIS OF HB ON DIFFERENT DAYS)
+%uri(project3.single,single_table9, Table 9:ANALYSIS OF URINE TEST)
+%labsum(project3.single,platelets,single_table10, TABLE 10: ANALYSIS OF PLT TEST ON DIFFERENT DAYS)
+%ve(project3.single,single_table11,TABLE 11: Analysis of HIV HCV HBS)
+
+
+%dsn_mmf(project3.single)
+%labsumx(mmf_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,single_table12,TABLE 12: ANALYSIS OF MMF DOSE IN DIFFERENT DAYS)
+
+
+%dsn_wys(project3.single)
+%labsumx(wys_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,single_table13, TABLE 13: ANALYSIS OF WYS DOSE TEST ON DIFFERENT DAYS)
+
+
+%atg(project3.single,single_table14,TABLE 14: ADVERSE EFFECTS ON ATG DRUG)
+%org(project3.single,single_table15,TABLE 15: ANALYSIS OF ORGAN S INVOLVED)
+
+%tt(project3.single,cd3,TABLE 16: T-TEST FOR CD3)
+%tt(project3.single,cd4,TABLE 17 :T-TEST FOR CD4 FINAL)
+%tt(project3.single,cd8,TABLE 18 :T-TEST FOR CD8)
+%tt(project3.single,hb,TABLE 19: T-TEST FOR HB TEST)
+%tt(project3.single,platelets,TABLE 22: T-TEST FOR PLT TEST)
+
+
+
+
+/* double group reports */
+
+options mprint mlogic symbolgen;
+
+%age(project3.double,double_table1)
+%rel(project3.double,double_table2)
+%gen(project3.double,double_table3)
+%ser(project3.double,double_table4,Table 4: Analysis of Serum Creatinine on Different Days)
+%labsum(project3.double,cd3,double_table5,Table 5: Analysis of CD3 in different days)
+%labsum(project3.double,cd4,double_table6,TABLE 6 : ANALYSIS ON CD4 IN DIFFERENT DAYS)
+%labsum(project3.double,cd8,double_table7,TABLE 7 : ANALYSIS ON CD8 IN DIFFERENT DAYS)
+%labsum(project3.double,hb,TABLE 8 : ANALYSIS OF HB ON DIFFERENT DAYS)
+%uri(project3.double,double_table9, Table 9:ANALYSIS OF URINE TEST)
+%labsum(project3.double,platelets,double_table10, TABLE 10: ANALYSIS OF PLT TEST ON DIFFERENT DAYS)
+%ve(project3.double,double_table11,TABLE 11: Analysis of HIV HCV HBS)
+
+
+%dsn_mmf(project3.double)
+%labsumx(mmf_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,double_table12,TABLE 12: ANALYSIS OF MMF DOSE IN DIFFERENT DAYS)
+
+
+%dsn_wys(project3.double)
+%labsumx(wys_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,double_table13, TABLE 13: ANALYSIS OF WYS DOSE TEST ON DIFFERENT DAYS)
+
+
+%atg(project3.double,double_table14,TABLE 14: ADVERSE EFFECTS ON ATG DRUG)
+%org(project3.double,double_table15,TABLE 15: ANALYSIS OF ORGAN S INVOLVED)
+
+%tt(project3.double,cd3,TABLE 16: T-TEST FOR CD3)
+%tt(project3.double,cd4,TABLE 17 :T-TEST FOR CD4 FINAL)
+%tt(project3.double,cd8,TABLE 18 :T-TEST FOR CD8)
+%tt(project3.double,hb,TABLE 19: T-TEST FOR HB TEST)
+%tt(project3.double,platelets,TABLE 22: T-TEST FOR PLT TEST)
+
+
+
+
+
+/* triple group reports */
+
+options mprint mlogic symbolgen;
+
+%age(project3.triple,triple_table1)
+%rel(project3.triple,triple_table2)
+%gen(project3.triple,triple_table3)
+%ser(project3.triple,triple_table4,Table 4: Analysis of Serum Creatinine on Different Days)
+%labsum(project3.triple,cd3,triple_table5,Table 5: Analysis of CD3 in different days)
+%labsum(project3.triple,cd4,triple_table6,TABLE 6 : ANALYSIS ON CD4 IN DIFFERENT DAYS)
+%labsum(project3.triple,cd8,triple_table7,TABLE 7 : ANALYSIS ON CD8 IN DIFFERENT DAYS)
+%labsum(project3.triple,hb,TABLE 8 : ANALYSIS OF HB ON DIFFERENT DAYS)
+%uri(project3.triple,triple_table9, Table 9:ANALYSIS OF URINE TEST)
+%labsum(project3.triple,platelets,triple_table10, TABLE 10: ANALYSIS OF PLT TEST ON DIFFERENT DAYS)
+%ve(project3.triple,triple_table11,TABLE 11: Analysis of HIV HCV HBS)
+
+
+%dsn_mmf(project3.triple)
+%labsumx(mmf_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,triple_table12,TABLE 12: ANALYSIS OF MMF DOSE IN DIFFERENT DAYS)
+
+
+%dsn_wys(project3.triple)
+%labsumx(wys_out,day0 day3 day7 day14 day30 day90 day180 day360 day720,triple_table13, TABLE 13: ANALYSIS OF WYS DOSE TEST ON DIFFERENT DAYS)
+
+
+%atg(project3.triple,triple_table14,TABLE 14: ADVERSE EFFECTS ON ATG DRUG)
+%org(project3.triple,triple_table15,TABLE 15: ANALYSIS OF ORGAN S INVOLVED)
+
+%tt(project3.triple,cd3,TABLE 16: T-TEST FOR CD3)
+%tt(project3.triple,cd4,TABLE 17 :T-TEST FOR CD4 FINAL)
+%tt(project3.triple,cd8,TABLE 18 :T-TEST FOR CD8)
+%tt(project3.triple,hb,TABLE 19: T-TEST FOR HB TEST)
+%tt(project3.triple,platelets,TABLE 22: T-TEST FOR PLT TEST)
+
+
+
+
+/* macro program created: age rel gen ser labsum(cd3,cd4,cd8,hb,platelets) labsumx(MMF, WYS) uri ve atg org inf tt(ttest)*/
